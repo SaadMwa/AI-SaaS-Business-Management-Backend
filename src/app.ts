@@ -1,6 +1,6 @@
 import routes from "./routes";
 import express from "express";
-import cors from "cors";
+import cors, { type CorsOptions } from "cors";
 import { notFound } from "./middlewares/not-found";
 import { errorHandler } from "./middlewares/error-handler";
 import aiRoute from "./routes/ai.route";
@@ -48,26 +48,32 @@ app.use((_, res, next) => {
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   next();
 });
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (
-        !origin ||
-        allowAllOrigins ||
-        allowedOrigins.has(origin) ||
-        isLocalDevOrigin(origin)
-      ) {
-        return callback(null, true);
-      }
-      logger.warn("cors_blocked_origin", { origin });
-      return callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-  })
-);
+const corsOptions: CorsOptions = {
+  origin: (origin, callback) => {
+    if (
+      !origin ||
+      allowAllOrigins ||
+      allowedOrigins.has(origin) ||
+      isLocalDevOrigin(origin)
+    ) {
+      return callback(null, true);
+    }
+    logger.warn("cors_blocked_origin", { origin });
+    return callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 app.use("/api", routes);
 app.use("/api/ai", aiRoute);
+// Support deployments that expose the API at the root path.
+app.use("/", routes);
+app.use("/ai", aiRoute);
 
 app.get("/", (_req, res) => {
   res.json({ success: true, message: "Backend API is running" });

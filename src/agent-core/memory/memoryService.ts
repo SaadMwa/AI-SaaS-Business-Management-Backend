@@ -15,8 +15,54 @@ const cosineSimilarity = (a: number[], b: number[]) => {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 };
 
+const cleanVector = (value: unknown): number[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => Number(item))
+    .filter((item) => Number.isFinite(item));
+};
+
+const callOpenAiEmbedding = async (text: string): Promise<number[]> => {
+  if (!env.openaiApiKey) return [];
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch("https://api.openai.com/v1/embeddings", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${env.openaiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: env.openaiEmbeddingModel || "text-embedding-3-small",
+        input: text,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      logger.warn("memory_embedding_openai_http_error", {
+        status: response.status,
+        body: body.slice(0, 500),
+      });
+      return [];
+    }
+    const payload = (await response.json()) as { data?: Array<{ embedding?: number[] }> };
+    return cleanVector(payload.data?.[0]?.embedding);
+  } catch (error) {
+    logger.warn("memory_embedding_openai_failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
 const embedText = async (text: string): Promise<number[]> => {
   if (!env.geminiApiKey) {
+    const openAiVector = await callOpenAiEmbedding(text);
+    if (openAiVector.length) return openAiVector;
     throw new Error("GEMINI_API_KEY is not set");
   }
 
@@ -45,6 +91,14 @@ const embedText = async (text: string): Promise<number[]> => {
 
     if (!response.ok) {
       const textBody = await response.text();
+      if (
+        response.status === 403 &&
+        (/reported as leaked/i.test(textBody) || /PERMISSION_DENIED/i.test(textBody))
+      ) {
+        const openAiVector = await callOpenAiEmbedding(text);
+        if (openAiVector.length) return openAiVector;
+        throw new Error("GEMINI_KEY_LEAKED");
+      }
       throw new Error(`Gemini embedding error: ${response.status} ${textBody}`);
     }
 

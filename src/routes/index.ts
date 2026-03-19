@@ -26,7 +26,7 @@ router.get("/status", (_req, res) => {
     status: {
       api: "ok",
       db: dbReady ? "ok" : "degraded",
-      ai: env.geminiApiKey ? "ok" : "degraded",
+      ai: env.geminiApiKey || env.openaiApiKey ? "ok" : "degraded",
       ts: new Date().toISOString(),
     },
   });

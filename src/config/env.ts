@@ -23,6 +23,7 @@ export const getMissingRequiredEnv = () => {
   if (!resolveDatabaseUrl()) missing.push("DATABASE_URL (or MONGO_URI)");
   if (!process.env.JWT_SECRET) missing.push("JWT_SECRET");
   if (!process.env.GEMINI_API_KEY) missing.push("GEMINI_API_KEY");
+  if (!process.env.OPENAI_API_KEY) missing.push("OPENAI_API_KEY");
 
   return missing;
 };
@@ -49,6 +50,7 @@ export const env = {
   geminiModel: process.env.GEMINI_MODEL || "gemini-2.5-flash",
   geminiEmbeddingModel: process.env.GEMINI_EMBEDDING_MODEL || "text-embedding-004",
   openaiApiKey: process.env.OPENAI_API_KEY || "",
+  openaiChatModel: process.env.OPENAI_CHAT_MODEL || process.env.OPENAI_INTENT_MODEL || "gpt-4o-mini",
   openaiIntentModel: process.env.OPENAI_INTENT_MODEL || "gpt-4o-mini",
   openaiEmbeddingModel: process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small",
   aiLocalUrl: process.env.AI_LOCAL_URL || "",

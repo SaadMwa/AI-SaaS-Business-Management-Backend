@@ -57,10 +57,18 @@ type GeminiApiResponse = {
   }>;
 };
 
+type OpenAiChatResponse = {
+  choices?: Array<{
+    message?: { content?: string };
+    finish_reason?: string;
+  }>;
+};
+
 const GEMINI_MAX_OUTPUT_TOKENS_DEFAULT = 5000;
 const MAX_CONTINUATION_ROUNDS_DEFAULT = 3;
 const TRUNCATION_FINISH_REASONS = new Set(["MAX_TOKENS", "LENGTH"]);
 const SHORT_RESPONSE_THRESHOLD = 180;
+const GEMINI_KEY_LEAKED_ERROR = "GEMINI_KEY_LEAKED";
 
 const normalizeFinishReason = (reason?: string) =>
   typeof reason === "string" ? reason.trim().toUpperCase() : "";
@@ -117,6 +125,60 @@ const extractCandidateText = (data: GeminiApiResponse) =>
 
 const extractFinishReason = (data: GeminiApiResponse) =>
   data.candidates?.[0]?.finishReason ?? data.candidates?.[0]?.finish_reason;
+
+const isGeminiKeyLeakedResponse = (status: number, body: string) => {
+  if (status !== 403) return false;
+  return /reported as leaked/i.test(body) || /PERMISSION_DENIED/i.test(body);
+};
+
+const callOpenAiChat = async (prompt: string, options: GeminiCallOptions = {}) => {
+  const fetchFn =
+    typeof fetch === "function"
+      ? fetch
+      : (await import("node-fetch")).default;
+
+  if (!env.openaiApiKey) {
+    throw new Error("OPENAI_API_KEY is not set");
+  }
+
+  const url = "https://api.openai.com/v1/chat/completions";
+  const timeoutMs = options.timeoutMs ?? 60000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetchFn(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${env.openaiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: env.openaiChatModel || env.openaiIntentModel || "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        temperature: options.temperature ?? 0.2,
+        max_tokens: options.maxOutputTokens ?? GEMINI_MAX_OUTPUT_TOKENS_DEFAULT,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`OpenAI error: ${response.status} ${text}`);
+    }
+
+    const data = (await response.json()) as OpenAiChatResponse;
+    const text = data.choices?.[0]?.message?.content?.trim() || "";
+    return sanitizeModelOutput(text);
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("OpenAI timeout");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+};
 
 export const PROMPT_TEMPLATES = {
   detailedAssistantSystem:
@@ -216,6 +278,10 @@ const callGemini = async (prompt: string, options: GeminiCallOptions = {}) => {
       : (await import("node-fetch")).default;
 
   if (!env.geminiApiKey) {
+    if (env.openaiApiKey) {
+      logger.warn("gemini_missing_fallback_openai");
+      return callOpenAiChat(prompt, options);
+    }
     throw new Error("GEMINI_API_KEY is not set");
   }
 
@@ -248,6 +314,9 @@ const callGemini = async (prompt: string, options: GeminiCallOptions = {}) => {
 
       if (!response.ok) {
         const text = await response.text();
+        if (isGeminiKeyLeakedResponse(response.status, text)) {
+          throw new Error(GEMINI_KEY_LEAKED_ERROR);
+        }
         if (response.status === 429) {
           let retryAfterSeconds = 60;
           try {
@@ -306,6 +375,12 @@ const callGemini = async (prompt: string, options: GeminiCallOptions = {}) => {
     logger.error("gemini_call_failed", {
       error: error instanceof Error ? error.message : String(error),
     });
+    if (error instanceof Error && error.message === GEMINI_KEY_LEAKED_ERROR) {
+      if (env.openaiApiKey) {
+        logger.warn("gemini_key_leaked_fallback_openai");
+        return callOpenAiChat(prompt, options);
+      }
+    }
     throw error;
   }
 

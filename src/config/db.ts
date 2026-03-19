@@ -21,7 +21,19 @@ export const connectDB = async (): Promise<typeof mongoose> => {
     throw new Error("DATABASE_URL is not set in environment variables");
   }
 
-  if (cached.conn) return cached.conn;
+  if (
+    cached.conn &&
+    Number(cached.conn.connection.readyState) === mongoose.ConnectionStates.connected
+  ) {
+    return cached.conn;
+  }
+
+  if (
+    cached.conn &&
+    Number(cached.conn.connection.readyState) !== mongoose.ConnectionStates.connected
+  ) {
+    cached.conn = null;
+  }
 
   if (!cached.promise) {
     cached.promise = mongoose

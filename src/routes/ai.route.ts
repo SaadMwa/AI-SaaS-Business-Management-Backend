@@ -523,7 +523,7 @@ type VisitorSessionState = {
 
 const visitorSessions = new Map<string, VisitorSessionState>();
 
-type VisitorGeminiIntent = {
+type VisitorAiIntent = {
   intent:
     | "catalog"
     | "availability"
@@ -791,7 +791,7 @@ const geminiGenerate = async (prompt: string, temperature = 0.2, maxOutputTokens
 const parseVisitorIntentWithGemini = async (
   question: string,
   memory: VisitorSessionState
-): Promise<VisitorGeminiIntent | null> => {
+): Promise<VisitorAiIntent | null> => {
   const prompt = [
     "You are an intent parser for an e-commerce store assistant.",
     "Return JSON only. No markdown.",
@@ -813,7 +813,7 @@ const parseVisitorIntentWithGemini = async (
   if (!match) return null;
 
   try {
-    const parsed = JSON.parse(match[0]) as VisitorGeminiIntent;
+    const parsed = JSON.parse(match[0]) as VisitorAiIntent;
     return parsed;
   } catch {
     return null;
@@ -2828,17 +2828,25 @@ router.post(
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
     logger.error("ai_error", { message, error: err instanceof Error ? err.message : String(err) });
-    if (message.startsWith("GEMINI_QUOTA_EXCEEDED")) {
-      const retryAfter = message.split(":")[1] || "60";
-      return res.status(200).json({
-        answer: `AI is temporarily rate limited. Please retry in about ${retryAfter} seconds.`,
-        businessData: null,
-        mode: "ACTION",
-        rateLimited: true,
-      });
-    }
-    return res.status(500).json({ error: "AI failed", details: message });
-  }
+        if (message.startsWith("GEMINI_QUOTA_EXCEEDED")) {
+          const retryAfter = message.split(":")[1] || "60";
+          return res.status(200).json({
+            answer: `AI is temporarily rate limited. Please retry in about ${retryAfter} seconds.`,
+            businessData: null,
+            mode: "ACTION",
+            rateLimited: true,
+          });
+        }
+        if (message === "GEMINI_KEY_LEAKED") {
+          return res.status(503).json({
+            error: "AI failed",
+            details:
+              "Gemini API key was revoked after being reported as leaked. Rotate the key and update GEMINI_API_KEY.",
+            code: "GEMINI_KEY_LEAKED",
+          });
+        }
+        return res.status(500).json({ error: "AI failed", details: message });
+      }
   }
 );
 
@@ -3260,6 +3268,14 @@ router.post("/interactive-submit", authenticate, requireAdmin, async (req: AuthR
         success: true,
         answer: "Entity saved successfully. AI confirmation is temporarily rate-limited.",
         rateLimited: true,
+      });
+    }
+    if (message === "GEMINI_KEY_LEAKED") {
+      return res.status(503).json({
+        success: false,
+        message:
+          "Gemini API key was revoked after being reported as leaked. Rotate the key and update GEMINI_API_KEY.",
+        code: "GEMINI_KEY_LEAKED",
       });
     }
     return res.status(500).json({ success: false, message });
