@@ -120,8 +120,7 @@ const sanitizeModelOutput = (text: string) =>
 const extractCandidateText = (data: GeminiApiResponse) =>
   (data.candidates?.[0]?.content?.parts ?? [])
     .map((part) => part.text ?? "")
-    .join("")
-    .trim();
+    .join("");
 
 const extractFinishReason = (data: GeminiApiResponse) =>
   data.candidates?.[0]?.finishReason ?? data.candidates?.[0]?.finish_reason;
@@ -262,15 +261,6 @@ Next steps:
 Keep it concise and directly tied to the data.
 `;
 
-export async function askAIStream(
-  question: string,
-  businessData: BusinessData,
-  onToken: (token: string) => void
-) {
-  const answer = await askAIOnce(question, businessData, 60000);
-  onToken(answer);
-}
-
 const callGemini = async (prompt: string, options: GeminiCallOptions = {}) => {
   const fetchFn =
     typeof fetch === "function"
@@ -292,9 +282,14 @@ const callGemini = async (prompt: string, options: GeminiCallOptions = {}) => {
   const maxContinuationRounds = options.maxContinuationRounds ?? MAX_CONTINUATION_ROUNDS_DEFAULT;
   const minDesiredChars = options.minDesiredChars ?? SHORT_RESPONSE_THRESHOLD;
 
-  const callSingleGeminiPass = async (inputPrompt: string) => {
+  // 🔥 NEW: Retry logic for 503 errors
+  const maxRetries = 5;
+  const baseDelay = 2000;
+
+  const callSingleGeminiPass = async (inputPrompt: string, retryCount = 0): Promise<{ text: string; finishReason?: string }> => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    
     try {
       const response = await fetchFn(url, {
         method: "POST",
@@ -314,6 +309,15 @@ const callGemini = async (prompt: string, options: GeminiCallOptions = {}) => {
 
       if (!response.ok) {
         const text = await response.text();
+        
+        // 🔥 Handle 503 (service unavailable) with retry
+        if (response.status === 503 && retryCount < maxRetries) {
+          const delay = baseDelay * Math.pow(2, retryCount); // 2s, 4s, 8s, 16s, 32s
+          logger.warn(`Gemini 503 error - Retry ${retryCount + 1}/${maxRetries} in ${delay}ms`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return callSingleGeminiPass(inputPrompt, retryCount + 1);
+        }
+        
         if (isGeminiKeyLeakedResponse(response.status, text)) {
           throw new Error(GEMINI_KEY_LEAKED_ERROR);
         }
@@ -350,7 +354,6 @@ const callGemini = async (prompt: string, options: GeminiCallOptions = {}) => {
       clearTimeout(timeout);
     }
   };
-
   let rounds = 0;
   let currentPrompt = prompt;
   let fullText = "";

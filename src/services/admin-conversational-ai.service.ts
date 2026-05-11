@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { taskService } from "./task.service";
 import { saleService } from "./sale.service";
+import { customerService } from "./customer.service";
 import { Product } from "../models/product";
 import { Customer } from "../models/customer";
 import { User } from "../models/user";
@@ -442,12 +443,11 @@ const getOrCreateWalkInCustomer = async (userId: string) => {
     .lean();
   if (existing?._id) return existing._id.toString();
 
-  const created = await Customer.create({
+  const created = await customerService.createCustomer(userId, {
     name: "Walk-in Customer",
     email: "walkin@example.com",
     phone: "",
     address: "",
-    createdBy: new mongoose.Types.ObjectId(userId),
   });
   return created._id.toString();
 };

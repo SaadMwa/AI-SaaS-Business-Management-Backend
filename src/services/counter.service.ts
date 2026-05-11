@@ -22,3 +22,12 @@ export const getNextSequence = async (userId: string, key: string, seedFrom?: ()
 
   return updated?.seq || 1;
 };
+
+export const syncSequence = async (userId: string, key: string, seq: number) => {
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  await Counter.findOneAndUpdate(
+    { userId: userObjectId, key },
+    { $set: { seq } },
+    { upsert: true, new: true }
+  ).lean();
+};

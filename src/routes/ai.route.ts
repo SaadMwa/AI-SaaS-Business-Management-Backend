@@ -3,7 +3,6 @@ import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 import {
   askAIOnce,
-  askAIStream,
   askAdminEntityWithGemini,
   askAdvisorWithMemory,
   askChatWithMemory,
@@ -1458,8 +1457,6 @@ router.post(
     const resolvedSessionId = typeof sessionId === "string" ? sessionId : "default";
     const adminSessionKey = `${mockUserId?.toString() || "admin"}:${resolvedSessionId}`;
 
-    const useStream = req.query.stream === "true";
-
     if (mockUserId) {
       await aiMemoryService.saveChatMessage(mockUserId.toString(), "user", question);
       await aiMemoryService.extractAndStoreLongTermMemory(mockUserId.toString(), question);
@@ -1954,33 +1951,6 @@ router.post(
     });
 
     if (agentResponse.handled) {
-      if (!useStream) {
-        if (mockUserId) {
-          await aiMemoryService.saveChatMessage(
-            mockUserId.toString(),
-            "ai",
-            agentResponse.answer || ""
-          );
-        }
-        const actionInsight = mockUserId
-          ? await adminAiInsightsService.buildDashboardNarrative(mockUserId.toString())
-          : null;
-        return res.json({
-          answer: [agentResponse.answer, actionInsight ? `Advisor note: ${actionInsight}` : ""]
-            .filter(Boolean)
-            .join("\n"),
-          businessData: agentResponse.businessData ?? null,
-          mode: "ACTION",
-        });
-      }
-
-      res.setHeader("Content-Type", "text/plain; charset=utf-8");
-      res.setHeader("Cache-Control", "no-cache, no-transform");
-      res.setHeader("X-Accel-Buffering", "no");
-      res.setHeader("Connection", "keep-alive");
-      res.setHeader("Transfer-Encoding", "chunked");
-      res.flushHeaders();
-      res.write(" ");
       if (mockUserId) {
         await aiMemoryService.saveChatMessage(
           mockUserId.toString(),
@@ -1988,9 +1958,16 @@ router.post(
           agentResponse.answer || ""
         );
       }
-      res.write(agentResponse.answer || "");
-      res.end();
-      return;
+      const actionInsight = mockUserId
+        ? await adminAiInsightsService.buildDashboardNarrative(mockUserId.toString())
+        : null;
+      return res.json({
+        answer: [agentResponse.answer, actionInsight ? `Advisor note: ${actionInsight}` : ""]
+          .filter(Boolean)
+          .join("\n"),
+        businessData: agentResponse.businessData ?? null,
+        mode: "ACTION",
+      });
     }
 
     const last30Days = new Date();
@@ -2739,91 +2716,21 @@ router.post(
       taskSummary,
     };
 
-    if (!useStream) {
-  
-
-        try {
-          const answer = await askAIOnce(effectiveQuestion, businessData as any, 60000);
-          if (mockUserId) {
-            await aiMemoryService.saveChatMessage(mockUserId.toString(), "ai", answer);
-          }
-          return res.json({ answer, businessData, mode: "ACTION" });
-        } catch (error) {
-          logger.error("ai_nonstream_failed", {
-            error: error instanceof Error ? error.message : String(error),
-          });
-          return res.json({ 
-            answer: buildFallbackResponse(effectiveQuestion, businessData as any), 
-            businessData,
-            mode: "ACTION",
-          });
-        }
-    }
-
- 
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.setHeader("Cache-Control", "no-cache, no-transform");
-    res.setHeader("X-Accel-Buffering", "no");
-    res.setHeader("Connection", "keep-alive");
-    res.setHeader("Transfer-Encoding", "chunked");
-    res.flushHeaders();
-    res.write(" "); // open the stream immediately to avoid buffering
-
-    let sentAny = false;
-    const fallbackAnswer = buildFallbackResponse(effectiveQuestion, businessData as any);
-    const timeout = setTimeout(() => {
-      if (!sentAny) {
-        logger.warn("ai_stream_timeout");
-        if (mockUserId) {
-          void aiMemoryService.saveChatMessage(mockUserId.toString(), "ai", fallbackAnswer);
-        }
-        res.write(fallbackAnswer);
-        sentAny = true;
-      }
-      res.end();
-    }, 120000);
-
-    const firstTokenTimeout = setTimeout(() => {
-      if (!sentAny) {
-        logger.warn("ai_stream_no_tokens");
-        if (mockUserId) {
-          void aiMemoryService.saveChatMessage(mockUserId.toString(), "ai", fallbackAnswer);
-        }
-        res.write(fallbackAnswer);
-        sentAny = true;
-        res.end();
-      }
-    }, 30000);
-
-    req.on("close", () => {
-      clearTimeout(timeout);
-      clearTimeout(firstTokenTimeout);
-    });
-
     try {
-      await askAIStream(effectiveQuestion, businessData as any, (token) => {
-        if (token) {
-          sentAny = true;
-          clearTimeout(firstTokenTimeout);
-          res.write(token);
-        }
-      });
-      clearTimeout(timeout);
-      clearTimeout(firstTokenTimeout);
-      res.end();
+      const answer = await askAIOnce(effectiveQuestion, businessData as any, 60000);
+      if (mockUserId) {
+        await aiMemoryService.saveChatMessage(mockUserId.toString(), "ai", answer);
+      }
+      return res.json({ answer, businessData, mode: "ACTION" });
     } catch (error) {
-      logger.error("ai_stream_failed", {
+      logger.error("ai_nonstream_failed", {
         error: error instanceof Error ? error.message : String(error),
       });
-      if (!sentAny) {
-        if (mockUserId) {
-          await aiMemoryService.saveChatMessage(mockUserId.toString(), "ai", fallbackAnswer);
-        }
-        res.write(fallbackAnswer);
-      }
-      clearTimeout(timeout);
-      clearTimeout(firstTokenTimeout);
-      res.end();
+      return res.json({
+        answer: buildFallbackResponse(effectiveQuestion, businessData as any),
+        businessData,
+        mode: "ACTION",
+      });
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -2987,12 +2894,11 @@ router.post("/interactive-submit", authenticate, requireAdmin, async (req: AuthR
       const customerId =
         existingCustomer?._id?.toString() ||
         (
-          await Customer.create({
+          await customerService.createCustomer(userId, {
             name: "Walk-in Customer",
             email: "walkin@example.com",
             phone: "",
             address: "",
-            createdBy: new mongoose.Types.ObjectId(userId),
           })
         )._id.toString();
 

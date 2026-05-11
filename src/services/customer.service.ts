@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 import { Customer } from "../models/customer";
-import { getNextSequence } from "./counter.service";
+import { getNextSequence, syncSequence } from "./counter.service";
 import { historyService } from "./history.service";
 
 const parseCustomerNumber = (value: unknown) => {
@@ -53,28 +53,56 @@ const getNextCustomerNumber = async (userId: string) => {
 };
 
 const ensureCustomerNumbers = async (userId: string, customers: any[]) => {
-  const missing = customers.filter((customer) => !customer.customerNumber);
-  if (!missing.length) return customers;
+  const ordered = [...customers].sort((a, b) => {
+    const aTime = new Date(a.createdAt || 0).getTime();
+    const bTime = new Date(b.createdAt || 0).getTime();
+    if (aTime !== bTime) return aTime - bTime;
+    return String(a._id).localeCompare(String(b._id));
+  });
 
-  for (const customer of missing) {
-    const parsedLegacy = parseCustomerNumber(customer.customer_number);
-    if (parsedLegacy) {
-      customer.customerNumber = parsedLegacy;
-      await Customer.updateOne(
-        { _id: customer._id },
-        { $set: { customerNumber: parsedLegacy } }
-      );
+  let changed = false;
+  const updates: Array<{ id: mongoose.Types.ObjectId; number: number }> = [];
+  for (let index = 0; index < ordered.length; index += 1) {
+    const nextNumber = index + 1;
+    const customer = ordered[index];
+    updates.push({ id: customer._id, number: nextNumber });
+    if (
+      customer.customerNumber === nextNumber &&
+      String(customer.customer_number || "") === String(nextNumber)
+    ) {
       continue;
     }
-    const next = await getNextCustomerNumber(userId);
-    customer.customerNumber = next;
-    await Customer.updateOne(
-      { _id: customer._id },
-      { $set: { customerNumber: next, customer_number: String(next) } }
+
+    changed = true;
+    customer.customerNumber = nextNumber;
+    customer.customer_number = String(nextNumber);
+  }
+
+  if (changed) {
+    await Customer.updateMany(
+      { _id: { $in: ordered.map((customer) => customer._id) } },
+      { $unset: { customerNumber: "", customer_number: "" } }
+    );
+    await Customer.bulkWrite(
+      updates.map((update) => ({
+        updateOne: {
+          filter: { _id: update.id },
+          update: {
+            $set: {
+              customerNumber: update.number,
+              customer_number: String(update.number),
+            },
+          },
+        },
+      }))
     );
   }
 
-  return customers.sort((a, b) => (a.customerNumber || 0) - (b.customerNumber || 0));
+  if (changed || ordered.length) {
+    await syncSequence(userId, "customer", ordered.length);
+  }
+
+  return ordered;
 };
 
 export const customerService = {
