@@ -14,6 +14,10 @@ const normalizeStoreId = (value: unknown) => {
   return null;
 };
 
+const resolveReadableStoreId = (req: AuthRequest) => {
+  return normalizeStoreId(req.query.store_id) || req.user?.store_id || env.publicStoreId;
+};
+
 const mapProductPayload = (body: Record<string, unknown>) => {
   return {
     name: typeof body.name === "string" ? body.name.trim() : "",
@@ -44,8 +48,10 @@ const validateProductPayload = (payload: ReturnType<typeof mapProductPayload>) =
 
 export const getProducts = async (req: AuthRequest, res: Response) => {
   try {
-    const requestedStoreId = normalizeStoreId(req.query.store_id);
-    const storeId = requestedStoreId || req.user?.store_id || env.demoStoreId;
+    const storeId = resolveReadableStoreId(req);
+    if (!storeId) {
+      return res.status(400).json({ success: false, message: "Store ID is required" });
+    }
     const intelligence = await productIntelligenceService.getStoreIntelligence(
       storeId,
       typeof req.query.q === "string" ? req.query.q : undefined
@@ -69,8 +75,10 @@ export const getProducts = async (req: AuthRequest, res: Response) => {
 
 export const searchStoreProducts = async (req: AuthRequest, res: Response) => {
   try {
-    const requestedStoreId = normalizeStoreId(req.query.store_id);
-    const storeId = requestedStoreId || req.user?.store_id || env.demoStoreId;
+    const storeId = resolveReadableStoreId(req);
+    if (!storeId) {
+      return res.status(400).json({ success: false, message: "Store ID is required" });
+    }
     const productName = typeof req.query.product_name === "string" ? req.query.product_name : null;
     const category = typeof req.query.category === "string" ? req.query.category : null;
     const minPrice =
@@ -105,8 +113,10 @@ export const searchStoreProducts = async (req: AuthRequest, res: Response) => {
 
 export const getProductRecommendations = async (req: AuthRequest, res: Response) => {
   try {
-    const requestedStoreId = normalizeStoreId(req.query.store_id);
-    const storeId = requestedStoreId || req.user?.store_id || env.demoStoreId;
+    const storeId = resolveReadableStoreId(req);
+    if (!storeId) {
+      return res.status(400).json({ success: false, message: "Store ID is required" });
+    }
     const query = typeof req.query.q === "string" ? req.query.q : undefined;
     const productId = typeof req.query.productId === "string" ? req.query.productId : undefined;
 

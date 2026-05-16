@@ -102,7 +102,6 @@ const autoTagFromText = (text: string) => {
     ["email", "email"],
     ["call", "call"],
     ["meeting", "meeting"],
-    ["demo", "demo"],
     ["bug", "bug"],
     ["issue", "issue"],
     ["urgent", "urgent"],
@@ -1359,7 +1358,7 @@ router.post(
       .toLowerCase();
     const authContext = parseAuthToken(req.headers.authorization);
     const isAdminUser = authContext?.role === "admin";
-    const storeId = authContext?.store_id || env.demoStoreId;
+    const storeId = authContext?.store_id || env.publicStoreId;
     const isGreeting =
       rawNormalizedQuestion.length <= 15 &&
       ["hi", "hello", "hey", "yo", "sup", "good morning", "good afternoon", "good evening"].some(
@@ -2760,9 +2759,12 @@ router.post(
 router.post("/interactive-submit", authenticate, requireAdmin, async (req: AuthRequest, res) => {
   try {
     const userId = req.user?.userId;
-    const storeId = req.user?.store_id || env.demoStoreId;
+    const storeId = req.user?.store_id;
     if (!userId) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+    if (!storeId) {
+      return res.status(400).json({ success: false, message: "Store ID is required" });
     }
 
     const { entityType, mode = "create", payload = {} } = req.body || {};

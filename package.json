@@ -6,8 +6,7 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
-    "seed:demo": "ts-node-dev --transpile-only --exit-child src/scripts/seedData.ts"
+    "start": "node dist/server.js"
   },
   "keywords": [
     "saas",
@@ -21,7 +20,6 @@
     "@google/generative-ai": "^0.24.1",
     "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.3",
-    "business-management-saas-monorepo": "file:..",
     "cors": "^2.8.5",
     "dotenv": "^16.6.1",
     "express": "^4.19.2",

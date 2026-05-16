@@ -1,5 +1,6 @@
 import { Schema, model, Document } from "mongoose";
 import bcrypt from "bcryptjs";
+import { randomUUID } from "crypto";
 import { UserRole } from "../types/auth";
 
 
@@ -18,7 +19,7 @@ const userSchema = new Schema<IUser>({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   role: { type: String, enum: ["admin"], default: "admin" },
-  storeId: { type: String, required: true, default: "demo-store-001" },
+  storeId: { type: String, required: true, default: () => `store-${randomUUID()}` },
   createdAt: { type: Date, default: Date.now },
 });
 

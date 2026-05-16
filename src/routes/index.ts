@@ -14,14 +14,13 @@ import { env } from "../config/env";
 
 const router = Router();
 
-// Base /api health check
 router.get("/", (_req, res) => {
   res.json({ success: true, message: "API is running" });
 });
 
-router.get("/status", (_req, res) => {
+const getHealthPayload = () => {
   const dbReady = mongoose.connection.readyState === 1;
-  res.json({
+  return {
     success: true,
     status: {
       api: "ok",
@@ -29,7 +28,15 @@ router.get("/status", (_req, res) => {
       ai: env.geminiApiKey || env.openaiApiKey ? "ok" : "degraded",
       ts: new Date().toISOString(),
     },
-  });
+  };
+};
+
+router.get("/health", (_req, res) => {
+  res.json(getHealthPayload());
+});
+
+router.get("/status", (_req, res) => {
+  res.json(getHealthPayload());
 });
 
 router.use("/auth", authRoutes);

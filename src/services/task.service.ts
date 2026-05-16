@@ -21,7 +21,6 @@ const autoTagFromText = (text: string) => {
     ["email", "email"],
     ["call", "call"],
     ["meeting", "meeting"],
-    ["demo", "demo"],
     ["bug", "bug"],
     ["issue", "issue"],
     ["urgent", "urgent"],

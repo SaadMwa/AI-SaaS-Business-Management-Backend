@@ -40,7 +40,7 @@ const emit = (level: LogLevel, message: string, meta?: Record<string, unknown>) 
     console.warn(payload);
     return;
   }
-  console.log(payload);
+  console.info(payload);
 };
 
 export const logger = {

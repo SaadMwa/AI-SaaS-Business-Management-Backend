@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { Product } from "../models/product";
 import { Sale } from "../models/sale";
+import { logger } from "../utils/logger";
 
 type ProductRecord = {
   _id: mongoose.Types.ObjectId | string;
@@ -62,10 +63,12 @@ const getAnyInStockProducts = async (storeId: string, limit: number) => {
 };
 
 const logRecommendation = (intentType: string, category: string | null, source: string, count: number) => {
-  console.log(`[RECOMMENDATION] Intent: ${intentType}`);
-  console.log(`[RECOMMENDATION] Category: ${category || "none"}`);
-  console.log(`[RECOMMENDATION] Source: ${source}`);
-  console.log(`[RECOMMENDATION] Products returned: ${count}`);
+  logger.debug("recommendation_result", {
+    intentType,
+    category: category || "none",
+    source,
+    count,
+  });
 };
 
 export type RecommendationOptions = {
@@ -101,9 +104,6 @@ export const recommendationEngine: IRecommendationEngine = {
       maxPrice = Number.POSITIVE_INFINITY,
     } = options;
 
-    console.log(
-      `🔍 Top sellers with price: $${minPrice} - ${maxPrice === Number.POSITIVE_INFINITY ? "∞" : `$${maxPrice}`}`
-    );
 
     const salesAgg = await Sale.aggregate([
       { $unwind: "$items" },
@@ -128,9 +128,6 @@ export const recommendationEngine: IRecommendationEngine = {
       const price = Number(product.price || 0);
       return price >= minPrice && price <= maxPrice;
     });
-
-    console.log(`📦 Found ${products.length} products within price range`);
-
     if (products.length === 0) {
       return this.getTrendingProducts(storeId, options);
     }
