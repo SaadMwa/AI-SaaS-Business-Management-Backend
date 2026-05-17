@@ -79,9 +79,18 @@ const ensureCustomerNumbers = async (userId: string, customers: any[]) => {
   }
 
   if (changed) {
-    await Customer.updateMany(
-      { _id: { $in: ordered.map((customer) => customer._id) } },
-      { $unset: { customerNumber: "", customer_number: "" } }
+    await Customer.bulkWrite(
+      updates.map((update, index) => ({
+        updateOne: {
+          filter: { _id: update.id },
+          update: {
+            $set: {
+              customerNumber: -(index + 1),
+              customer_number: `__renumbering_${String(update.id)}`,
+            },
+          },
+        },
+      }))
     );
     await Customer.bulkWrite(
       updates.map((update) => ({

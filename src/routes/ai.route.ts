@@ -47,6 +47,14 @@ const sanitizeText = (value: unknown, max = 2000) => {
   return value.replace(/[\u0000-\u001F\u007F]/g, " ").trim().slice(0, max);
 };
 
+const resolvePublicStoreId = async () => {
+  if (env.publicStoreId) return env.publicStoreId;
+  const product = await Product.findOne({ store_id: { $exists: true, $ne: "" } })
+    .select("store_id")
+    .lean();
+  return typeof product?.store_id === "string" ? product.store_id : "";
+};
+
 const isLikelyClarificationRequest = (question: string) => {
   const normalized = question.toLowerCase().trim();
   if (!normalized) return false;
@@ -1358,7 +1366,7 @@ router.post(
       .toLowerCase();
     const authContext = parseAuthToken(req.headers.authorization);
     const isAdminUser = authContext?.role === "admin";
-    const storeId = authContext?.store_id || env.publicStoreId;
+    const storeId = authContext?.store_id || (await resolvePublicStoreId());
     const isGreeting =
       rawNormalizedQuestion.length <= 15 &&
       ["hi", "hello", "hey", "yo", "sup", "good morning", "good afternoon", "good evening"].some(

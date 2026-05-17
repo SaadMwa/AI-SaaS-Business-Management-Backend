@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authenticate, requireAdmin } from "../middlewares/auth.middleware";
+import { authenticate, optionalAuthenticate, requireAdmin } from "../middlewares/auth.middleware";
 import {
   createProduct,
   deleteProduct,
@@ -12,9 +12,9 @@ import {
 
 const router = Router();
 
-router.get("/", getProducts);
-router.get("/search", searchStoreProducts);
-router.get("/recommendations", getProductRecommendations);
+router.get("/", optionalAuthenticate, getProducts);
+router.get("/search", optionalAuthenticate, searchStoreProducts);
+router.get("/recommendations", optionalAuthenticate, getProductRecommendations);
 router.post("/ai-content", authenticate, requireAdmin, generateProductAiContent);
 router.post("/", authenticate, requireAdmin, createProduct);
 router.put("/:id", authenticate, requireAdmin, updateProduct);

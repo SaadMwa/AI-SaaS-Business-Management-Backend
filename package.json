@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
+    "seed": "npm run build && node dist/scripts/seedData.js",
     "start": "node dist/server.js"
   },
   "keywords": [

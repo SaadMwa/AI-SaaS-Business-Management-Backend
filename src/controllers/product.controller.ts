@@ -14,8 +14,20 @@ const normalizeStoreId = (value: unknown) => {
   return null;
 };
 
-const resolveReadableStoreId = (req: AuthRequest) => {
-  return normalizeStoreId(req.query.store_id) || req.user?.store_id || env.publicStoreId;
+const resolveFirstProductStoreId = async () => {
+  const product = await Product.findOne({ store_id: { $exists: true, $ne: "" } })
+    .select("store_id")
+    .lean();
+  return typeof product?.store_id === "string" ? product.store_id : "";
+};
+
+const resolveReadableStoreId = async (req: AuthRequest) => {
+  return (
+    normalizeStoreId(req.query.store_id) ||
+    req.user?.store_id ||
+    env.publicStoreId ||
+    (await resolveFirstProductStoreId())
+  );
 };
 
 const mapProductPayload = (body: Record<string, unknown>) => {
@@ -46,11 +58,21 @@ const validateProductPayload = (payload: ReturnType<typeof mapProductPayload>) =
   return null;
 };
 
+const emptyCatalogResponse = {
+  success: true,
+  products: [],
+  featuredProducts: [],
+  bestSellers: [],
+  lowStockAlerts: [],
+  smartSuggestions: [],
+  categories: [],
+};
+
 export const getProducts = async (req: AuthRequest, res: Response) => {
   try {
-    const storeId = resolveReadableStoreId(req);
+    const storeId = await resolveReadableStoreId(req);
     if (!storeId) {
-      return res.status(400).json({ success: false, message: "Store ID is required" });
+      return res.json(emptyCatalogResponse);
     }
     const intelligence = await productIntelligenceService.getStoreIntelligence(
       storeId,
@@ -75,9 +97,16 @@ export const getProducts = async (req: AuthRequest, res: Response) => {
 
 export const searchStoreProducts = async (req: AuthRequest, res: Response) => {
   try {
-    const storeId = resolveReadableStoreId(req);
+    const storeId = await resolveReadableStoreId(req);
     if (!storeId) {
-      return res.status(400).json({ success: false, message: "Store ID is required" });
+      return res.json({
+        success: true,
+        products: [],
+        query: {
+          filters: {},
+          reason: "missing_store_id",
+        },
+      });
     }
     const productName = typeof req.query.product_name === "string" ? req.query.product_name : null;
     const category = typeof req.query.category === "string" ? req.query.category : null;
@@ -113,9 +142,17 @@ export const searchStoreProducts = async (req: AuthRequest, res: Response) => {
 
 export const getProductRecommendations = async (req: AuthRequest, res: Response) => {
   try {
-    const storeId = resolveReadableStoreId(req);
+    const storeId = await resolveReadableStoreId(req);
     if (!storeId) {
-      return res.status(400).json({ success: false, message: "Store ID is required" });
+      return res.json({
+        success: true,
+        seedProductId: null,
+        recommendations: [],
+        featuredProducts: [],
+        bestSellers: [],
+        lowStockAlerts: [],
+        smartSuggestions: [],
+      });
     }
     const query = typeof req.query.q === "string" ? req.query.q : undefined;
     const productId = typeof req.query.productId === "string" ? req.query.productId : undefined;

@@ -77,6 +77,30 @@ export const authenticate = (req: AuthRequest, res: Response, next: NextFunction
   }
 };
 
+export const optionalAuthenticate = (req: AuthRequest, _res: Response, next: NextFunction) => {
+  try {
+    const token = extractTokenFromHeader(req.headers.authorization);
+    if (!token || !env.jwtSecret) return next();
+
+    const decoded = jwt.verify(token, env.jwtSecret) as JwtUserPayload;
+    if (!decoded.userId || !decoded.role || !decoded.store_id) return next();
+
+    req.user = {
+      userId: decoded.userId,
+      email: decoded.email,
+      role: decoded.role,
+      store_id: decoded.store_id,
+      full_access: decoded.full_access ?? decoded.role === "admin",
+      iat: decoded.iat,
+      exp: decoded.exp,
+    };
+  } catch {
+    // Public routes should remain public even when a stale token is present.
+  }
+
+  next();
+};
+
 export const requireRole = (...allowedRoles: UserRole[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) {

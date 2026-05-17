@@ -7,6 +7,7 @@ type CachedConnection = {
   promise: Promise<typeof mongoose> | null;
 };
 
+
 const globalCache = global as typeof global & { _mongoose?: CachedConnection };
 
 const cached: CachedConnection = globalCache._mongoose || { conn: null, promise: null };

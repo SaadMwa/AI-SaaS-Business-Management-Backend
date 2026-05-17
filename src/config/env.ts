@@ -22,8 +22,9 @@ export const getMissingRequiredEnv = () => {
 
   if (!resolveDatabaseUrl()) missing.push("DATABASE_URL (or MONGO_URI)");
   if (!process.env.JWT_SECRET) missing.push("JWT_SECRET");
-  if (!process.env.GEMINI_API_KEY) missing.push("GEMINI_API_KEY");
-  if (!process.env.OPENAI_API_KEY) missing.push("OPENAI_API_KEY");
+  if (!process.env.GEMINI_API_KEY && !process.env.OPENAI_API_KEY) {
+    missing.push("GEMINI_API_KEY or OPENAI_API_KEY");
+  }
 
   return missing;
 };
